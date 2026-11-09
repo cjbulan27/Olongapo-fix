@@ -1,0 +1,28 @@
+{
+ "name": "olongapo-fixit",
+ "version": "1.2.0",
+ "private": true,
+ "description": "Olongapo FixIt - community problem reporting platform",
+ "scripts": {
+  "dev": "node --watch --no-warnings server.js",
+  "start": "node --no-warnings server.js",
+  "test": "node --no-warnings test.js",
+  "test:ui": "node --no-warnings ui.test.js",
+  "test:all": "npm test && npm run test:ui",
+  "reset-db": "node -e \"for(const f of ['fixit.db','fixit.db-wal','fixit.db-shm'])try{require('fs').unlinkSync(f)}catch(e){}console.log('Database cleared. It will be re-created with demo data on next start.')\""
+ },
+ "devDependencies": {
+  "jsdom": "^26.0.0"
+ },
+ "engines": {
+  "node": ">=22.5"
+ },
+ "dependencies": {
+  "leaflet": "^1.9.4"
+ },
+ "main": "server.js",
+ "keywords": [],
+ "author": "",
+ "license": "ISC",
+ "type": "commonjs"
+}
