@@ -1,7 +1,7 @@
 /* App bootstrap: router and startup */
 let routeN=0;
 async function route(){
- closeConfirm();const h=location.hash||'#/',p=h.split('/'),v=p[1]||'',A=$('app'),n=++routeN;if(v!=='people-map')disposePeopleMap();A.classList.add('busy');
+ closeConfirm();if(typeof closeResidentProof==='function')closeResidentProof();const h=location.hash||'#/',p=h.split('/'),v=p[1]||'',A=$('app'),n=++routeN;if(v!=='people-map')disposePeopleMap();if(v==='notifs')A.innerHTML=notificationSkeleton();A.classList.add('busy');
  try{
   await Promise.all([refresh(),api('public').then(x=>{P=x})]);if(n!==routeN)return;
   if(v==='logout'){await api('logout',{});ME=null;S.reports=[];toast('You have been logged out.');return go('#/login')}

@@ -1,4 +1,42 @@
 /* Public pages: home, track, community, login, register */
+const TRACK_COPY={
+ title:'Track a Report',intro:'Enter the reference number you received after sending a report.',
+ idLabel:'Report ID',placeholder:'OF-2026-000001',format:'Use this format: OF-YYYY-NNNNNN. Example: OF-2026-000001.',
+ invalid:'Check the format. Enter an ID like OF-2026-000001.',
+ submit:'Track report',loading:'Searching…',searching:'Looking for your report…',
+ recent:'Recently tracked',emptyRecent:'Your recent report IDs will appear here.',
+ lost:'Lost your report ID? Check your notifications.',
+ notFoundTitle:'Report not found',notFoundText:'Check the ID for typing mistakes, then try again. If you still need help, check your notifications or contact your barangay.',
+ timeline:['Submitted','Verified','In Progress','Resolved'],
+ descriptions:['Your report was received.','An official checked your report.','Work is underway.','The issue has been resolved.'],
+ waiting:'Waiting for this step',rejected:'This report was rejected. Check your notifications or contact your barangay for more information.',
+ systemError:'We could not look up this report. Please try again.'
+};
+const TRACK_CODE_PATTERN=/^OF-\d{4}-\d{6}$/;
+let TRACK_REQUEST=0,TRACK_IDS=[];
+function loadTrackedIds(){
+ try{const values=JSON.parse(localStorage.getItem('fixitTrackedIds')||'[]');return Array.isArray(values)?values.filter(id=>typeof id==='string'&&TRACK_CODE_PATTERN.test(id)).slice(0,3):[]}
+ catch(e){console.warn('Could not read recent report IDs from local storage.',e);return[]}
+}
+function saveTrackedId(id){
+ TRACK_IDS=[id,...TRACK_IDS.filter(value=>value!==id)].slice(0,3);
+ try{localStorage.setItem('fixitTrackedIds',JSON.stringify(TRACK_IDS))}
+ catch(e){console.warn('Could not save recent report IDs to local storage.',e)}
+ renderTrackedIds();
+}
+function renderTrackedIds(){
+ const target=$('track-recent');if(!target)return;
+ target.innerHTML=`<div class="track-recent-heading"><h3>${esc(TRACK_COPY.recent)}</h3><p>${TRACK_IDS.length?'Select an ID to look it up again.':esc(TRACK_COPY.emptyRecent)}</p></div>${TRACK_IDS.length?`<div class="track-recent-chips">${TRACK_IDS.map(id=>`<button type="button" class="track-chip" onclick="useTrackedReport('${id}')">${esc(id)}</button>`).join('')}</div>`:''}`;
+}
+function useTrackedReport(id){const input=$('tc');if(!input)return;input.value=id;trackInputChanged();doTrack()}
+function trackInputChanged(){
+ const input=$('tc');if(!input)return;
+ const value=input.value.toUpperCase();if(input.value!==value)input.value=value;
+ const error=$('track-id-error'),invalid=!!value&&!TRACK_CODE_PATTERN.test(value);
+ error.hidden=!invalid;error.textContent=invalid?TRACK_COPY.invalid:'';
+ input.setAttribute('aria-invalid',String(invalid));
+ if($('tr'))$('tr').innerHTML='';
+}
 function home(){const st=P.stats||{};
  const reports=[['Total reports',st.total],['Resolved',st.resolved],['Open now',st.active],['Barangays reached',st.barangays]];
  $('app').innerHTML=`<div class="civic-home">
@@ -14,9 +52,46 @@ function home(){const st=P.stats||{};
  <section class="category-section" aria-labelledby="category-title"><div><p class="kicker">Make your neighborhood legible</p><h2 id="category-title">What needs attention?</h2></div><div class="category-cloud">${CATS.map((c,i)=>`<a class="category-tag tag-${i%4}" href="#/new" aria-label="Report ${esc(c)}">${esc(c)} <span aria-hidden="true">↗</span></a>`).join('')}</div></section>
  <section class="home-close"><p>Olongapo works better when the street-level details have somewhere to go.</p><a class="signal-cta light" href="#/new">Start a report <span aria-hidden="true">→</span></a></section>
  </div>`}
-function track(){$('app').innerHTML=`<div class="card authbox" data-enter="doTrack" style="max-width:640px"><h2>Track a Report</h2><p class="mu">Enter the report ID you received when you submitted (example: OF-2026-000001).</p><input id="tc" placeholder="OF-2026-000001"><button class="btn" onclick="doTrack()">Track</button><div id="tr"></div></div>`}
-async function doTrack(){const c=$('tc').value.trim();await guarded(async()=>{const r=await api('track?code='+encodeURIComponent(c));
- $('tr').innerHTML=r.found?`<h3>${esc(r.code)}</h3><p>${esc(r.cat)} · ${esc(r.brgy)} · ${esc(fd(r.created))}</p>${badge(r.status)}<ul class="tl">${r.hist.map(h=>`<li><b>${esc(h.s)}</b> <small>${esc(fd(h.at))}</small></li>`).join('')}</ul>${r.resolution?'<p class="ok">Resolution: '+esc(r.resolution)+'</p>':''}`:'<p class="err">No report found with that ID.</p>'},'tr')}
+function track(){
+ TRACK_IDS=loadTrackedIds();
+ $('app').innerHTML=`<section class="track-page"><header class="track-header"><p class="eyebrow">REPORT LOOKUP</p><h2>${esc(TRACK_COPY.title)}</h2><p>${esc(TRACK_COPY.intro)}</p></header><form class="track-form" onsubmit="doTrack(event)" novalidate><label for="tc">${esc(TRACK_COPY.idLabel)}</label><div class="track-form-row"><input id="tc" name="code" type="text" maxlength="14" placeholder="${esc(TRACK_COPY.placeholder)}" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="track-id-hint track-id-error"><button id="track-submit" class="btn track-submit" type="submit"><span>${esc(TRACK_COPY.submit)}</span></button></div><p id="track-id-hint" class="track-help">${esc(TRACK_COPY.format)}</p><p id="track-id-error" class="track-inline-error" role="alert" aria-live="polite" hidden></p></form><p class="track-notification-note">${esc(TRACK_COPY.lost)} <a href="#/notifs">View notifications</a></p><div id="track-recent"></div><div id="tr" class="track-result" aria-live="polite" aria-busy="false"></div></section>`;
+ $('tc').addEventListener('input',trackInputChanged);renderTrackedIds();
+}
+function trackTimeline(report){
+ const history=report.hist||[],status=String(report.status||'').toUpperCase();
+ const entryFor=accepted=>history.filter(item=>accepted.includes(String(item.s||'').toUpperCase())).slice(-1)[0]||null;
+ const stageEntries=[
+  entryFor(['SUBMITTED','UNDER REVIEW'])||{at:report.created},
+  entryFor(['VERIFIED','ASSIGNED']),
+  entryFor(['IN PROGRESS']),
+  entryFor(['RESOLVED'])
+ ];
+ const current={SUBMITTED:0,'UNDER REVIEW':0,VERIFIED:1,ASSIGNED:1,'IN PROGRESS':2,RESOLVED:3,REJECTED:Math.max(0,history.reduce((max,item)=>{const index={'SUBMITTED':0,'UNDER REVIEW':0,VERIFIED:1,ASSIGNED:1,'IN PROGRESS':2,RESOLVED:3}[String(item.s||'').toUpperCase()];return index===undefined?max:Math.max(max,index)},0))}[status]??0;
+ return `<ol class="track-timeline" aria-label="Report status timeline">${TRACK_COPY.timeline.map((label,index)=>{
+  const entry=stageEntries[index],completed=!!entry&&index<current,active=index===current;
+  const description=index===3&&report.resolution?report.resolution:TRACK_COPY.descriptions[index];
+  return `<li class="track-step ${completed?'is-complete':''} ${active?'is-current':''}"${active?' aria-current="step"':''}><span class="track-step-marker" aria-hidden="true">${completed?'✓':index+1}</span><div class="track-step-content"><div class="track-step-heading"><strong>${esc(label)}</strong><time${entry&&entry.at?` datetime="${esc(entry.at)}" title="${esc(fd(entry.at))}"`:''}>${entry&&entry.at?esc(fd(entry.at)):esc(TRACK_COPY.waiting)}</time></div><p>${esc(description)}</p></div></li>`
+ }).join('')}</ol>`
+}
+function trackedReportMarkup(report){
+ const rejected=String(report.status||'').toUpperCase()==='REJECTED';
+ return `<article class="track-report-card"><header class="track-report-heading"><div><p class="eyebrow">REPORT FOUND</p><h3>${esc(report.code)}</h3><p>${esc(report.cat)} · ${esc(report.brgy)} · Submitted ${esc(fdate(report.created))}</p></div>${badge(report.status)}</header>${rejected?`<p class="track-rejected" role="status">${esc(TRACK_COPY.rejected)}</p>`:''}${trackTimeline(report)}${report.resolution?`<p class="track-resolution"><b>Resolution:</b> ${esc(report.resolution)}</p>`:''}</article>`
+}
+async function doTrack(event){
+ if(event)event.preventDefault();
+ const input=$('tc'),button=$('track-submit'),result=$('tr');if(!input||!button||!result)return;
+ input.value=input.value.trim().toUpperCase();
+ if(!TRACK_CODE_PATTERN.test(input.value)){const error=$('track-id-error');error.textContent=TRACK_COPY.invalid;error.hidden=false;input.setAttribute('aria-invalid','true');input.focus();return}
+ $('track-id-error').hidden=true;input.setAttribute('aria-invalid','false');
+ const code=input.value,request=++TRACK_REQUEST;saveTrackedId(code);
+ button.disabled=true;button.setAttribute('aria-busy','true');button.innerHTML=`<span class="track-spinner" aria-hidden="true"></span>${esc(TRACK_COPY.loading)}`;
+ result.setAttribute('aria-busy','true');result.innerHTML=`<p class="track-searching" role="status">${esc(TRACK_COPY.searching)}</p>`;
+ try{
+  const report=await api('track?code='+encodeURIComponent(code));if(request!==TRACK_REQUEST)return;
+  result.innerHTML=report.found?trackedReportMarkup(report):`<div class="track-not-found" role="alert"><span class="track-not-found-icon" aria-hidden="true">?</span><div><h3>${esc(TRACK_COPY.notFoundTitle)}</h3><p>${esc(TRACK_COPY.notFoundText)}</p><a href="#/notifs">Check notifications</a></div></div>`;
+ }catch(error){if(request===TRACK_REQUEST)result.innerHTML=`<p class="track-request-error" role="alert">${esc(error.message||TRACK_COPY.systemError)}</p>`}
+ finally{if(request===TRACK_REQUEST&&button.isConnected){button.disabled=false;button.removeAttribute('aria-busy');button.innerHTML=`<span>${esc(TRACK_COPY.submit)}</span>`;result.setAttribute('aria-busy','false')}}
+}
 function community(){$('app').innerHTML=`<div class="card"><h2>Community Reports</h2><div class="tw"><table><tr><th>Category</th><th>Barangay</th><th>General location</th><th>Status</th><th>Date</th></tr>${P.list.map(r=>`<tr><td>${esc(r.cat)}</td><td>${esc(r.brgy)}</td><td>Brgy. ${esc(r.brgy)}</td><td>${badge(r.status)}</td><td>${esc(fdate(r.date))}</td></tr>`).join('')}</table></div></div>`}
 const DEMOS=[['Super Admin','admin@fixit.ph','admin123'],['Pag-asa Official','pagasa@fixit.ph','demo123'],['New Kalalake Official','newkalalake@fixit.ph','demo123'],['West Tapinac Official','westtapinac@fixit.ph','demo123'],['City Official','engineer@fixit.ph','demo123'],['Resident','resident@fixit.ph','demo123']];
 function fillDemo(e,p){$('le').value=e;$('lp').value=p;$('lp').focus()}
